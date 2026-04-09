@@ -1,0 +1,121 @@
+from flask import Flask, request, jsonify
+import pandas as pd
+import traceback
+
+# FAIR AI MODULES
+from fair_ai.bias_detection import detect_bias
+from fair_ai.mitigation import apply_mitigation
+from fair_ai.utils import preprocess_data, split_features_target
+from fair_ai.model import get_best_model
+from fair_ai.ai_explainer import generate_explanation
+from fair_ai.pdf_handler import extract_text_from_pdf, text_to_dataframe
+
+app = Flask(__name__)
+
+
+@app.route("/")
+def home():
+    return "FairAI Backend Running 🚀"
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    try:
+        # ---------------------------
+        # FILE CHECK
+        # ---------------------------
+        if 'file' not in request.files:
+            return jsonify({"error": "No file uploaded"})
+
+        file = request.files['file']
+
+        # ---------------------------
+        # LOAD DATA (CSV + PDF)
+        # ---------------------------
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            text = extract_text_from_pdf(file)
+            df = text_to_dataframe(text)
+
+            if df is None:
+                return jsonify({"error": "PDF parsing failed"})
+
+        if df.empty:
+            return jsonify({"error": "Dataset is empty"})
+
+        df = df.dropna()
+
+        # ---------------------------
+        # AUTO COLUMN SELECT
+        # ---------------------------
+        sensitive_col = df.columns[0]
+        target_col = df.columns[-1]
+
+        # ---------------------------
+        # BEFORE BIAS
+        # ---------------------------
+        result_before = detect_bias(df, sensitive_col, target_col)
+
+        selection_before = result_before.get("selection_rates", {})
+
+        # ---------------------------
+        # MITIGATION
+        # ---------------------------
+        df_balanced = apply_mitigation(df, sensitive_col, "reweight")
+
+        # ---------------------------
+        # AFTER BIAS
+        # ---------------------------
+        result_after = detect_bias(df_balanced, sensitive_col, target_col)
+
+        selection_after = result_after.get("selection_rates", {})
+
+        # ---------------------------
+        # MODEL (SAFE MODE)
+        # ---------------------------
+        df_encoded = preprocess_data(df_balanced)
+
+        # 🔥 MEMORY FIX
+        if df_encoded.shape[0] > 30000:
+            df_encoded = df_encoded.sample(30000)
+
+        X, y = split_features_target(df_encoded, target_col)
+
+        best_model = get_best_model(X, y)
+
+        # ---------------------------
+        # EXPLANATION
+        # ---------------------------
+        explanation = generate_explanation(result_before, result_after)
+
+        # ---------------------------
+        # FINAL RESPONSE
+        # ---------------------------
+        return jsonify({
+            "status": "success",
+
+            "before": result_before,
+            "after": result_after,
+
+            "selection_before": selection_before,
+            "selection_after": selection_after,
+
+            "model": {
+                "type": best_model.get("type"),
+                "accuracy": round(best_model.get("accuracy", 0), 3)
+            },
+
+            "explanation": explanation
+        })
+
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": str(e),
+            "trace": traceback.format_exc()
+        })
+
+
+if __name__ == "__main__":
+    app.run(debug=True)

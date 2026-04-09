@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>FairAI Dashboard</title>
+
+<style>
+
+body {
+    background: #0f172a;
+    font-family: Arial;
+    color: white;
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 900px;
+    margin-top: 30px;
+}
+
+h1 {
+    text-align: center;
+    color: #38bdf8;
+}
+
+.card {
+    background: #1e293b;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 12px;
+}
+
+button {
+    width: 100%;
+    padding: 12px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #2563eb;
+}
+
+input, select {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+.table-container {
+    overflow-x: auto;
+    margin-top: 10px;
+    border-radius: 10px;
+}
+
+table {
+    min-width: 900px;
+    border-collapse: collapse;
+}
+
+th {
+    background: #1e40af;
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
+td {
+    background: #0f172a;
+}
+
+th, td {
+    padding: 10px;
+    text-align: center;
+    border-bottom: 1px solid #334155;
+}
+
+img {
+    margin-top: 10px;
+    border-radius: 10px;
+}
+
+/* 🔥 Loading */
+.loader {
+    text-align: center;
+    font-size: 18px;
+    color: #38bdf8;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>FairAI Dashboard</h1>
+
+<div class="card">
+
+<!-- 🔥 MODE ADDED -->
+<select id="mode">
+<option>Auto AI</option>
+<option>Manual</option>
+<option>Hybrid</option>
+</select>
+
+<input type="file" id="fileInput">
+<br><br>
+<button onclick="runAnalysis()">Run Analysis</button>
+</div>
+
+<div id="result"></div>
+
+<div class="card">
+<h3>AI Assistant</h3>
+<input id="aiInput" placeholder="Ask about bias..." onkeypress="handleEnter(event)">
+<br><br>
+<button onclick="askAI()">Ask</button>
+<div id="aiOutput"></div>
+</div>
+
+</div>
+
+<script>
+
+let chatHistory = [];
+
+// --------------------
+// ANALYSIS
+// --------------------
+async function runAnalysis() {
+
+    const file = document.getElementById("fileInput").files[0];
+    const mode = document.getElementById("mode").value;
+    const resultDiv = document.getElementById("result");
+
+    if (!file) return alert("Upload file");
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("mode", mode);   // 🔥 MODE SEND
+
+    resultDiv.innerHTML = "<div class='loader'>⚡ Processing AI...</div>";
+
+    const res = await fetch("http://127.0.0.1:5000/analyze", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    // 🔥 SAVE CONTEXT
+    window.lastAnalysis = data.dashboard;
+
+    // TABLE
+    let tableHTML = "<table>";
+    if(data.preview && data.preview.length > 0){
+        let cols = Object.keys(data.preview[0]);
+
+        tableHTML += "<tr>";
+        cols.forEach(c => tableHTML += `<th>${c}</th>`);
+        tableHTML += "</tr>";
+
+        data.preview.forEach(row => {
+            tableHTML += "<tr>";
+            cols.forEach(c => tableHTML += `<td>${row[c]}</td>`);
+            tableHTML += "</tr>";
+        });
+    }
+    tableHTML += "</table>";
+
+    resultDiv.innerHTML = `
+
+    <div class="card">
+    <h3>Dataset Preview</h3>
+    <div class="table-container">${tableHTML}</div>
+    </div>
+
+    <div class="card">
+    <h3>Dashboard</h3>
+    <p>DI: ${data.dashboard.di}</p>
+    <p>SPD: ${data.dashboard.spd}</p>
+    <p>Risk: ${data.dashboard.risk}</p>
+    </div>
+
+    <div class="card">
+    <h3>Model</h3>
+    <p>${data.model.type}</p>
+    <p>Accuracy: ${data.model.accuracy}</p>
+    </div>
+
+    <div class="card">
+    <h3>Explanation</h3>
+    <p>${data.explanation}</p>
+    </div>
+
+    <div class="card">
+    <h3>Graphs</h3>
+    <img src="data:image/png;base64,${data.graphs.before}" width="100%">
+    <img src="data:image/png;base64,${data.graphs.after}" width="100%">
+    <img src="data:image/png;base64,${data.graphs.metrics}" width="100%">
+    </div>
+
+    <div class="card">
+    <h3>Suggestions</h3>
+    <ul>${data.suggestions.map(s => `<li>${s}</li>`).join("")}</ul>
+    </div>
+    `;
+}
+
+// --------------------
+// ENTER KEY SUPPORT
+// --------------------
+function handleEnter(event){
+    if(event.key === "Enter"){
+        askAI();
+    }
+}
+
+// --------------------
+// AI CHAT
+// --------------------
+async function askAI() {
+
+    const input = document.getElementById("aiInput").value;
+
+    const res = await fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+            message: input,
+            context: window.lastAnalysis || {}
+        })
+    });
+
+    const data = await res.json();
+
+    chatHistory.push({user: input, ai: data.response});
+
+    let html = "";
+
+    chatHistory.forEach(c => {
+        html += `<p><b>You:</b> ${c.user}</p>`;
+        html += `<p><b>AI:</b> ${c.ai}</p><hr>`;
+    });
+
+    document.getElementById("aiOutput").innerHTML = html;
+
+    document.getElementById("aiInput").value = "";
+}
+
+</script>
+
+</body>
+</html>

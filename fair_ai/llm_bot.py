@@ -1,35 +1,50 @@
 import requests
 
+# 🔥 GLOBAL MEMORY
+chat_history = []
+
 # -------------------------------
-# Fallback system (rule-based)
+# FALLBACK SYSTEM
 # -------------------------------
-def fallback_response(user_input):
-    user_input = user_input.lower()
+def fallback_response(user_input, context=None):
+    msg = user_input.lower()
 
-    if "bias" in user_input:
-        return "Bias means unfair preference toward a group in data or model."
+    context_info = ""
+    if context:
+        di = context.get("disparate_impact")
+        risk = context.get("risk_level")
+        context_info = f"(Dataset DI={di}, Risk={risk}) "
 
-    elif "fairness" in user_input:
-        return "Fairness ensures equal treatment of all groups in predictions."
+    if "bias" in msg:
+        return context_info + "Bias means unfair preference toward a group."
 
-    elif "model" in user_input:
-        return "The system uses machine learning models to analyze fairness."
+    elif "fairness" in msg:
+        return context_info + "Fairness ensures equal treatment of all groups."
 
-    elif "risk" in user_input:
-        return "Risk indicates how unfair the model predictions might be."
+    elif "model" in msg:
+        return context_info + "Model analyzes fairness and predictions."
+
+    elif "risk" in msg:
+        return context_info + "Risk indicates potential unfair decisions."
+
+    elif "improve" in msg:
+        return context_info + "Use mitigation techniques like reweighting."
 
     else:
-        return "System is in fallback mode. Please check API connection."
-
+        return context_info + "System is running in fallback mode."
 
 # -------------------------------
-# Main AI function
+# MAIN AI FUNCTION
 # -------------------------------
-def get_response(user_input, context):
+def get_response(user_input, context=None):
+    global chat_history
+
+    # 🧠 ADD USER MESSAGE
+    chat_history.append({"role": "user", "content": user_input})
 
     try:
-        api_key = "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"   # Api key
-        
+        api_key = "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"   # 🔥 IMPORTANT
+
         url = "https://openrouter.ai/api/v1/chat/completions"
 
         headers = {
@@ -37,25 +52,35 @@ def get_response(user_input, context):
             "Content-Type": "application/json"
         }
 
+        # 🔥 CONTEXT ADD
+        context_msg = ""
+        if context:
+            context_msg = f"Dataset info: DI={context.get('disparate_impact')}, Risk={context.get('risk_level')}"
+
+        messages = [
+            {"role": "system", "content": "You are an AI assistant for fairness, bias detection, and ML explainability."},
+            {"role": "system", "content": context_msg}
+        ] + chat_history[-6:]   # 🔥 last 6 messages (memory)
+
         data = {
             "model": "openrouter/auto",
-    
-                "messages": [
-                {"role": "system", "content": "You are an AI assistant for fairness and bias detection."},
-                {"role": "user", "content": user_input}
-            ]
+            "messages": messages
         }
 
         response = requests.post(url, headers=headers, json=data)
-
         res_json = response.json()
 
-        # अगर API सही response दे
+        # ✅ SUCCESS
         if "choices" in res_json:
-            return res_json['choices'][0]['message']['content']
+            reply = res_json['choices'][0]['message']['content']
 
-        # अगर कुछ गड़बड़
-        return fallback_response(user_input)
+            # 🧠 SAVE AI RESPONSE
+            chat_history.append({"role": "assistant", "content": reply})
+
+            return reply
+
+        # ❌ fallback
+        return fallback_response(user_input, context)
 
     except Exception as e:
-        return fallback_response(user_input)
+        return fallback_response(user_input, context)

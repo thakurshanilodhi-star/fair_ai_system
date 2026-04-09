@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>FairAI Dashboard</title>
+
+<style>
+
+body {
+    background: #0f172a;
+    font-family: Arial;
+    color: white;
+    display: flex;
+    justify-content: center;
+}
+
+.container {
+    width: 900px;
+    margin-top: 30px;
+}
+
+/* HEADER */
+h1 {
+    text-align: center;
+    color: #38bdf8;
+}
+
+/* CARD */
+.card {
+    background: #1e293b;
+    padding: 20px;
+    margin-top: 20px;
+    border-radius: 12px;
+}
+
+/* BUTTON */
+button {
+    width: 100%;
+    padding: 12px;
+    background: #3b82f6;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #2563eb;
+}
+
+/* INPUT */
+input {
+    width: 100%;
+    padding: 10px;
+    margin-top: 10px;
+}
+
+/* TABLE */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
+
+th, td {
+    padding: 8px;
+    border-bottom: 1px solid #444;
+}
+
+/* IMAGE */
+img {
+    margin-top: 10px;
+    border-radius: 10px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>FairAI Dashboard</h1>
+
+<div class="card">
+<input type="file" id="fileInput">
+<br><br>
+<button onclick="runAnalysis()">Run Analysis</button>
+</div>
+
+<div id="result"></div>
+
+<div class="card">
+<h3>AI Assistant</h3>
+<input id="aiInput" placeholder="Ask about bias...">
+<br><br>
+<button onclick="askAI()">Ask</button>
+<p id="aiOutput"></p>
+</div>
+
+</div>
+
+<script>
+
+async function runAnalysis() {
+
+    const file = document.getElementById("fileInput").files[0];
+    const resultDiv = document.getElementById("result");
+
+    if (!file) return alert("Upload file");
+
+    const formData = new FormData();
+    formData.append("file", file);
+
+    resultDiv.innerHTML = "Processing...";
+
+    const res = await fetch("http://127.0.0.1:5000/analyze", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    // TABLE
+    let tableHTML = "<table>";
+    if(data.preview){
+        let cols = Object.keys(data.preview[0]);
+
+        tableHTML += "<tr>";
+        cols.forEach(c => tableHTML += `<th>${c}</th>`);
+        tableHTML += "</tr>";
+
+        data.preview.forEach(row => {
+            tableHTML += "<tr>";
+            cols.forEach(c => tableHTML += `<td>${row[c]}</td>`);
+            tableHTML += "</tr>";
+        });
+    }
+    tableHTML += "</table>";
+
+    resultDiv.innerHTML = `
+
+    <div class="card">
+    <h3>Dataset Preview</h3>
+    ${tableHTML}
+    </div>
+
+    <div class="card">
+    <h3>Dashboard</h3>
+    <p>Disparate Impact: ${data.dashboard.disparate_impact}</p>
+    <p>SPD: ${data.dashboard.spd}</p>
+    <p>Risk: ${data.dashboard.risk_level}</p>
+    </div>
+
+    <div class="card">
+    <h3>Model</h3>
+    <p>${data.model.type}</p>
+    <p>Accuracy: ${data.model.accuracy}</p>
+    </div>
+
+    <div class="card">
+    <h3>Explanation</h3>
+    <p>${data.explanation}</p>
+    </div>
+
+    <div class="card">
+    <h3>Graphs</h3>
+    <img src="data:image/png;base64,${data.graphs.before}" width="100%">
+    <img src="data:image/png;base64,${data.graphs.after}" width="100%">
+    </div>
+
+    `;
+}
+
+// AI CHAT
+async function askAI() {
+    const input = document.getElementById("aiInput").value;
+
+    const res = await fetch("http://127.0.0.1:5000/chat", {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({message: input})
+    });
+
+    const data = await res.json();
+    document.getElementById("aiOutput").innerText = data.response;
+}
+
+</script>
+
+</body>
+</html>
