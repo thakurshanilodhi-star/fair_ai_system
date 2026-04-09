@@ -66,7 +66,7 @@ Fair_AI_System/
 
 -- Installation
 
-git clone https://github.com/YOUR_USERNAME/FairAI-System.git
+git clone https://github.com/thakurshanilodhi-star/fair_ai_system.git
 cd FairAI-System
 pip install -r requirements.txt
 
